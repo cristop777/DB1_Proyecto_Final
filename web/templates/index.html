@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Configuración · AutoAudit{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <p class="eyebrow">Panel de administración</p>
+    <h1>Configuración de auditoría</h1>
+    <p class="muted">Elige una tabla de la base de datos para configurar sus columnas y operaciones auditadas.</p>
+  </div>
+  <form method="post" action="{{ url_for('synchronize') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="button button-secondary" type="submit">Sincronizar diccionario</button>
+  </form>
+</section>
+
+<section class="card">
+  <div class="section-heading">
+    <div><h2>Tablas disponibles</h2><p class="muted">Se muestran las tablas visibles para el usuario conectado a PostgreSQL.</p></div>
+    <span class="count">{{ tables|length }} tablas</span>
+  </div>
+  {% if tables %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Esquema</th><th>Tabla</th><th>Columnas</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+      {% for item in tables %}
+        <tr>
+          <td><code>{{ item.esquema }}</code></td>
+          <td class="strong">{{ item.tabla }}</td>
+          <td>{{ item.total_columnas }}</td>
+          <td><span class="badge {{ 'badge-on' if item.habilitada else 'badge-off' }}">{{ 'Activa' if item.habilitada else 'Inactiva' }}</span></td>
+          <td class="align-right"><a class="button button-small" href="{{ url_for('configure', esquema=item.esquema, tabla=item.tabla) }}">Configurar</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty"><strong>No se encontraron tablas.</strong><span>Verifica que la base de datos tenga tablas y que el usuario tenga permisos para verlas.</span></div>
+  {% endif %}
+</section>
+
+<aside class="note"><strong>Antes de empezar:</strong> el usuario configurado en <code>.env</code> debe pertenecer al rol <code>autoaudit_admin</code>. La lista depende de sus permisos de PostgreSQL.</aside>
+{% endblock %}

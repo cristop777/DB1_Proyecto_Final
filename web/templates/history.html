@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Historial · AutoAudit{% endblock %}
+{% block content %}
+<section class="hero">
+  <div><p class="eyebrow">Consulta histórica</p><h1>Historial de cambios</h1><p class="muted">Filtra por usuario, operación, fechas, columna, esquema o tabla.</p></div>
+</section>
+<form class="card filters" method="get" action="{{ url_for('history') }}">
+  <label>Usuario de base de datos<input type="text" name="usuario" value="{{ filters.usuario }}" placeholder="cristop"></label>
+  <label>Columna<input type="text" name="columna" value="{{ filters.columna }}" placeholder="correo"></label>
+  <label>Esquema<input type="text" name="esquema" value="{{ filters.esquema }}" placeholder="public"></label>
+  <label>Tabla<input type="text" name="tabla" value="{{ filters.tabla }}" placeholder="clientes_demo"></label>
+  <label>Operación
+    <select name="operacion">
+      <option value="">Todas</option>
+      {% for event in ['insert', 'update', 'delete'] %}
+        <option value="{{ event }}" {{ 'selected' if filters.operacion == event else '' }}>{{ event|upper }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Desde<input type="date" name="desde" value="{{ filters.desde }}"></label>
+  <label>Hasta<input type="date" name="hasta" value="{{ filters.hasta }}"></label>
+  <div class="filter-actions">
+    <button class="button" type="submit">Buscar</button>
+    <a class="button button-secondary" href="{{ url_for('export_history', **filters) }}">Exportar CSV</a>
+    <a class="reset-link" href="{{ url_for('history') }}">Limpiar filtros</a>
+  </div>
+</form>
+<section class="card">
+  <div class="section-heading"><div><h2>Resultados</h2><p class="muted">Los valores se conservan como JSON para respetar sus tipos originales.</p></div><span class="count">{{ total }} registros</span></div>
+  {% if rows %}
+  <div class="table-wrap"><table class="history-table">
+    <thead><tr><th>Fecha</th><th>Tabla</th><th>Clave de fila</th><th>Operación</th><th>Usuario</th><th>Columna</th><th>Valor anterior</th><th>Valor nuevo</th><th>IP</th></tr></thead>
+    <tbody>{% for row in rows %}<tr>
+      <td class="nowrap">{{ row.fecha_evento.strftime('%Y-%m-%d %H:%M:%S %Z') }}</td>
+      <td><code>{{ row.esquema }}.{{ row.tabla }}</code></td>
+      <td class="json-value">{{ row.clave_fila if row.clave_fila else '—' }}</td>
+      <td><span class="badge badge-event">{{ row.operacion }}</span></td><td>{{ row.usuario }}</td><td>{{ row.columna }}</td>
+      <td class="json-value">{{ row.valor_anterior if row.valor_anterior is not none else '—' }}</td>
+      <td class="json-value">{{ row.valor_nuevo if row.valor_nuevo is not none else '—' }}</td><td>{{ row.direccion_ip or '—' }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty"><strong>No hay resultados.</strong><span>Prueba otros filtros o genera una operación en una tabla auditada.</span></div>{% endif %}
+  {% if pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}<a class="button button-secondary" href="{{ url_for('history', pagina=page - 1, **filters) }}">← Anterior</a>{% else %}<span></span>{% endif %}
+    <span>Página {{ page }} de {{ pages }}</span>
+    {% if page < pages %}<a class="button button-secondary" href="{{ url_for('history', pagina=page + 1, **filters) }}">Siguiente →</a>{% else %}<span></span>{% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

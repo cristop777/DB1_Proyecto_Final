@@ -1,4 +1,4 @@
--- crea las funciones para auditoria
+-- crea las funciones para auditorias
 
 CREATE OR REPLACE FUNCTION autoaudit.configurar_columna(p_esquema name, p_tabla name, p_columna name, p_operaciones text[])
  RETURNS void
@@ -100,8 +100,7 @@ BEGIN
 
     PERFORM autoaudit.instalar_trigger(v_tabla_id);
 END;
-$function$
-;
+$function$;
 
 -- DROP FUNCTION autoaudit.desactivar_operacion(name, name, name, text);
 
@@ -294,6 +293,9 @@ DECLARE
     v_evento_id bigint;
     v_fila_anterior jsonb;
     v_fila_nueva jsonb;
+    v_clave_anterior jsonb;
+    v_clave_nueva jsonb;
+    v_clave_fila jsonb;
     v_columna record;
     v_valor_anterior jsonb;
     v_valor_nuevo jsonb;
@@ -314,6 +316,52 @@ BEGIN
 
     IF TG_OP <> 'DELETE' THEN
         v_fila_nueva := to_jsonb(NEW);
+    END IF;
+
+    -- Obtiene las columnas de la clave primaria en el orden definido por
+    -- PostgreSQL. Las claves compuestas se almacenan como objetos JSON.
+    IF TG_OP <> 'INSERT' THEN
+        SELECT jsonb_object_agg(
+                   a.attname,
+                   v_fila_anterior -> a.attname
+                   ORDER BY key_col.posicion
+               )
+          INTO v_clave_anterior
+          FROM pg_catalog.pg_constraint AS pk
+          CROSS JOIN LATERAL unnest(pk.conkey)
+              WITH ORDINALITY AS key_col(attnum, posicion)
+          JOIN pg_catalog.pg_attribute AS a
+            ON a.attrelid = pk.conrelid
+           AND a.attnum = key_col.attnum
+         WHERE pk.conrelid = TG_RELID
+           AND pk.contype = 'p';
+    END IF;
+
+    IF TG_OP <> 'DELETE' THEN
+        SELECT jsonb_object_agg(
+                   a.attname,
+                   v_fila_nueva -> a.attname
+                   ORDER BY key_col.posicion
+               )
+          INTO v_clave_nueva
+          FROM pg_catalog.pg_constraint AS pk
+          CROSS JOIN LATERAL unnest(pk.conkey)
+              WITH ORDINALITY AS key_col(attnum, posicion)
+          JOIN pg_catalog.pg_attribute AS a
+            ON a.attrelid = pk.conrelid
+           AND a.attnum = key_col.attnum
+         WHERE pk.conrelid = TG_RELID
+           AND pk.contype = 'p';
+    END IF;
+
+    -- La estructura distingue la clave anterior y la nueva. En INSERT la
+    -- anterior es null; en DELETE la nueva es null. Si cambia la clave
+    -- primaria durante un UPDATE, ambos valores quedan preservados.
+    IF v_clave_anterior IS NOT NULL OR v_clave_nueva IS NOT NULL THEN
+        v_clave_fila := jsonb_build_object(
+            'anterior', v_clave_anterior,
+            'nuevo', v_clave_nueva
+        );
     END IF;
 
     -- Recorre una sola vez las columnas habilitadas para esta operación.
@@ -367,6 +415,7 @@ BEGIN
                 usuario_auditado_id,
                 usuario_snapshot,
                 direccion_ip,
+                clave_fila,
                 fila_anterior,
                 fila_nueva
             )
@@ -376,6 +425,7 @@ BEGIN
                 v_usuario_id,
                 session_user,
                 inet_client_addr(),
+                v_clave_fila,
                 v_fila_anterior,
                 v_fila_nueva
             )

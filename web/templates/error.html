@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}Error · AutoAudit{% endblock %}
+{% block content %}
+<section class="card error-card"><p class="eyebrow">No se pudo completar la solicitud</p><h1>Revisa la conexión</h1><p>{{ message }}</p><a class="button" href="{{ url_for('index') }}">Volver al panel</a></section>
+{% endblock %}
