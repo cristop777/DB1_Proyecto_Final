@@ -44,7 +44,15 @@ La versión actual implementa el módulo de base de datos. La interfaz gráfica 
 
 El manual reporta los resultados de rendimiento obtenidos en las ejecuciones del proyecto y explica su variación. Para comparar todos los volúmenes bajo la función optimizada, repetir al menos tres veces cada tamaño de lote y documentar mediana y rango.
 
-## Repositorio remoto
+## Publicación en GitHub
 
-El proyecto está organizado como repositorio Git local y listo para conectarse a GitLab. Antes de publicarlo, revisar que solo incluya archivos del proyecto y que no contenga credenciales, datos personales ni archivos de respaldo de la base. Cree un proyecto vacío en GitLab desde la cuenta del equipo, agregue su URL como remoto y publique la rama principal. Añada el enlace del proyecto al informe final.
+El repositorio local ya está inicializado en la rama `main` y tiene un commit. En GitHub, crea un repositorio nuevo llamado `AutoAudit`. No marques las opciones para crear README, `.gitignore` ni licencia, porque esos archivos ya están en este proyecto. Elige la visibilidad que te indique el docente.
 
+Copia la URL HTTPS del repositorio recién creado y, en PowerShell, desde esta carpeta ejecuta:
+
+```powershell
+git remote add origin https://github.com/TU_USUARIO/AutoAudit.git
+git push -u origin main
+```
+
+Sustituye `TU_USUARIO` por tu nombre de usuario de GitHub y usa la URL exacta que GitHub muestre. Si Git responde que `origin` ya existe, revisa con `git remote -v` y actualízalo con `git remote set-url origin URL_DEL_REPOSITORIO`. Finalmente, agrega el enlace del repositorio al informe final.
