@@ -1,0 +1,10 @@
+# Ignore local credentials and generated database artifacts
+.env
+.env.*
+!.env.example
+*.dump
+*.backup
+*.bak
+*.log
+.DS_Store
+Thumbs.db
