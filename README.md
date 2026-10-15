@@ -4,55 +4,38 @@ Proyecto universitario de base de datos para configurar auditoría por tabla, co
 
 ## Contenido
 
-- `00_crear_base.sql` a `08_pruebas_rendimiento.sql`: scripts ordenados para creación, configuración, consulta y pruebas.
-- `manual_tecnico_autoaudit.docx`: manual de instalación, configuración, modelo de datos, consultas y resultados de validación.
+- 00_crear_base.sql a 08_pruebas_rendimiento.sql: scripts ordenados para creación, configuración, consulta y pruebas.
 
 ## Requisitos
 
-- PostgreSQL 18 (versión objetivo del proyecto).
-- DBeaver 26.2.1 se utilizó para las pruebas y ejemplos del manual.
-- Una cuenta con privilegios suficientes para crear la base, el esquema, roles, tablas, funciones y triggers.
-- Ubuntu 26.04 LTS es el sistema operativo objetivo documentado.
+- PostgreSQL 18 es la versión objetivo del proyecto.
+- DBeaver 26.2.1 se utilizó en las pruebas.
+- Ubuntu 26.04 LTS es el sistema operativo objetivo.
+- Se requieren privilegios para crear la base, esquema, rol, tablas, funciones y triggers.
 
-PostgreSQL utiliza PL/pgSQL para las funciones almacenadas. PL/SQL es el lenguaje de Oracle.
+PostgreSQL utiliza PL/pgSQL para funciones almacenadas; PL/SQL corresponde principalmente a Oracle.
 
 ## Orden de instalación
 
-1. Desde una conexión a la base de mantenimiento `postgres`, ejecutar `00_crear_base.sql`. La creación de base debe ejecutarse fuera de una transacción. Si `autoaudit_db` ya existe, omitir este paso.
-2. Conectarse a `autoaudit_db` y ejecutar, en orden, `01_crear_schema.sql`, `02_esquema_tablas.sql`, `03_funciones.sql` y `04_permisos.sql`.
-3. Si un usuario debe configurar auditoría, otorgarle la membresía del rol administrativo desde una cuenta autorizada. Por ejemplo, sustituir `cristop` por el usuario correcto:
+1. Desde la conexión de mantenimiento postgres, ejecutar 00_crear_base.sql. La creación de la base debe hacerse fuera de una transacción. Si autoaudit_db ya existe, omitir este paso.
+2. Conectarse a autoaudit_db y ejecutar en orden 01_crear_schema.sql, 02_esquema_tablas.sql, 03_funciones.sql y 04_permisos.sql.
+3. Si otro usuario debe configurar auditoría, otorgarle la membresía del rol autoaudit_admin desde una cuenta autorizada. Sustituye cristop por el usuario correspondiente.
+4. Ejecutar 05_configuracion_demo.sql para crear la tabla de demostración, sincronizar el diccionario y activar auditoría en correo.
+5. Ejecutar 06_consultas_historial.sql para crear la vista de historial.
+6. Ejecutar 07_pruebas_funcionales.sql. Prueba INSERT, UPDATE y DELETE, consulta los resultados y termina con ROLLBACK.
+7. Ejecutar por separado cada bloque de 08_pruebas_rendimiento.sql y conservar la salida de EXPLAIN (ANALYZE, BUFFERS).
 
-   ```sql
-   GRANT autoaudit_admin TO cristop;
-   ```
+## Advertencias
 
-4. Ejecutar `05_configuracion_demo.sql` para crear `public.clientes_demo`, sincronizar el diccionario y activar la auditoría de `correo`.
-5. Ejecutar `06_consultas_historial.sql` para crear la vista y consultar el historial.
-6. Ejecutar `07_pruebas_funcionales.sql` para validar INSERT, UPDATE y DELETE. El script termina con `ROLLBACK`, así que los cambios de esa prueba no quedan guardados.
-7. Ejecutar cada bloque de `08_pruebas_rendimiento.sql` por separado y conservar la salida de `EXPLAIN (ANALYZE, BUFFERS)`. El script usa `ROLLBACK` para revertir las filas generadas.
+- 01_crear_schema.sql elimina y recrea el esquema autoaudit con CASCADE.
+- 05_configuracion_demo.sql elimina y recrea public.clientes_demo.
+- Ejecutar esos scripts solo en una base de demostración o limpia.
+- 08_pruebas_rendimiento.sql espera que el trigger se llame trg_autoaudit_1. Si el ID de tabla genera otro nombre, cambiarlo en el script.
 
-## Advertencias de datos
+## Estado actual
 
-- `01_crear_schema.sql` ejecuta `DROP SCHEMA IF EXISTS autoaudit CASCADE`: elimina el esquema y los objetos/datos que contiene.
-- `05_configuracion_demo.sql` elimina y recrea `public.clientes_demo` con `CASCADE`.
-- Ejecutar esos scripts solo en una base limpia o de demostración. No usarlos sobre datos que se deban conservar.
-- `08_pruebas_rendimiento.sql` espera que el trigger de demostración se llame `trg_autoaudit_1`. Si el identificador de tabla produjo otro nombre, consultar `pg_trigger` y cambiar el nombre en ese script antes de ejecutarlo.
+La versión implementa el módulo de base de datos. La interfaz no está implementada ni tiene tecnología definida. La estación de trabajo se registra si la aplicación la informa dentro de la transacción. La columna clave_fila existe en la bitácora, pero la función actual aún no la completa.
 
-## Estado y alcance
+## Repositorio
 
-La versión actual implementa el módulo de base de datos. La interfaz gráfica no está implementada ni tiene tecnología definida. La estación de trabajo se registra si la aplicación la informa dentro de la transacción. La columna `clave_fila` existe en la bitácora, pero la función actual aún no la completa.
-
-El manual reporta los resultados de rendimiento obtenidos en las ejecuciones del proyecto y explica su variación. Para comparar todos los volúmenes bajo la función optimizada, repetir al menos tres veces cada tamaño de lote y documentar mediana y rango.
-
-## Publicación en GitHub
-
-El repositorio local ya está inicializado en la rama `main` y tiene un commit. En GitHub, crea un repositorio nuevo llamado `AutoAudit`. No marques las opciones para crear README, `.gitignore` ni licencia, porque esos archivos ya están en este proyecto. Elige la visibilidad que te indique el docente.
-
-Copia la URL HTTPS del repositorio recién creado y, en PowerShell, desde esta carpeta ejecuta:
-
-```powershell
-git remote add origin https://github.com/TU_USUARIO/AutoAudit.git
-git push -u origin main
-```
-
-Sustituye `TU_USUARIO` por tu nombre de usuario de GitHub y usa la URL exacta que GitHub muestre. Si Git responde que `origin` ya existe, revisa con `git remote -v` y actualízalo con `git remote set-url origin URL_DEL_REPOSITORIO`. Finalmente, agrega el enlace del repositorio al informe final.
+https://github.com/cristop777/DB1_Proyecto_Final
