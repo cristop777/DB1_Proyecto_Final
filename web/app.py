@@ -13,7 +13,17 @@ from functools import wraps
 
 import psycopg
 from dotenv import load_dotenv
-from flask import Flask, abort, flash, make_response, redirect, render_template, request, session, url_for
+from flask import (
+    Flask,
+    abort,
+    flash,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from psycopg.rows import dict_row
 from werkzeug.security import check_password_hash
 
@@ -28,9 +38,9 @@ EVENTS = {"insert", "update", "delete"}
 HISTORY_FROM = """
     FROM autoaudit.evento_auditoria AS e
     JOIN autoaudit.tabla_auditada AS ta
-      ON ta.tabla_auditada_id = e.tabla_auditada_id
+    ON ta.tabla_auditada_id = e.tabla_auditada_id
     JOIN autoaudit.detalle_auditoria AS d
-      ON d.evento_auditoria_id = e.evento_auditoria_id
+    ON d.evento_auditoria_id = e.evento_auditoria_id
 """
 
 
@@ -49,26 +59,33 @@ def db_connection():
 
 def csrf_protected(view):
     """Protección CSRF pequeña para los formularios de esta interfaz local."""
+
     @wraps(view)
     def wrapped(*args, **kwargs):
         if request.method == "POST":
             submitted = request.form.get("csrf_token", "")
             expected = session.get("csrf_token", "")
             if not expected or not hmac.compare_digest(submitted, expected):
-                abort(400, description="La sesión del formulario venció. Recarga la página.")
+                abort(
+                    400,
+                    description="La sesión del formulario venció. Recarga la página.",
+                )
         if "csrf_token" not in session:
             session["csrf_token"] = secrets.token_urlsafe(32)
         return view(*args, **kwargs)
+
     return wrapped
 
 
 def login_required(view):
     """Restringe las funciones de administración a la sesión autenticada."""
+
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not session.get("web_user"):
             return redirect(url_for("login"))
         return view(*args, **kwargs)
+
     return wrapped
 
 
@@ -92,10 +109,13 @@ def login():
         submitted_password = request.form.get("contrasena", "")
 
         if not configured_user or not password_hash:
-            flash("Configura AUTOAUDIT_WEB_USER y AUTOAUDIT_WEB_PASSWORD_HASH en .env.", "danger")
-        elif hmac.compare_digest(submitted_user, configured_user) and check_password_hash(
-            password_hash, submitted_password
-        ):
+            flash(
+                "Configura AUTOAUDIT_WEB_USER y AUTOAUDIT_WEB_PASSWORD_HASH en .env.",
+                "danger",
+            )
+        elif hmac.compare_digest(
+            submitted_user, configured_user
+        ) and check_password_hash(password_hash, submitted_password):
             session.clear()
             session["web_user"] = configured_user
             flash("Sesión iniciada.", "success")
@@ -119,19 +139,19 @@ def list_tables():
     """Obtiene tablas visibles para el usuario PostgreSQL de la aplicación."""
     query = """
         SELECT t.table_schema AS esquema,
-               t.table_name AS tabla,
-               COALESCE(ta.habilitada, false) AS habilitada,
-               COUNT(c.column_name)::integer AS total_columnas
+            t.table_name AS tabla,
+            COALESCE(ta.habilitada, false) AS habilitada,
+            COUNT(c.column_name)::integer AS total_columnas
         FROM information_schema.tables AS t
         LEFT JOIN autoaudit.tabla_auditada AS ta
-          ON ta.esquema_origen::text = t.table_schema
-         AND ta.nombre_tabla::text = t.table_name
+        ON ta.esquema_origen::text = t.table_schema
+        AND ta.nombre_tabla::text = t.table_name
         LEFT JOIN information_schema.columns AS c
-          ON c.table_schema = t.table_schema
-         AND c.table_name = t.table_name
+        ON c.table_schema = t.table_schema
+        AND c.table_name = t.table_name
         WHERE t.table_type = 'BASE TABLE'
-          AND t.table_schema NOT IN ('information_schema', 'autoaudit')
-          AND left(t.table_schema, 3) <> 'pg_'
+        AND t.table_schema NOT IN ('information_schema', 'autoaudit')
+        AND left(t.table_schema, 3) <> 'pg_'
         GROUP BY t.table_schema, t.table_name, ta.habilitada
         ORDER BY t.table_schema, t.table_name
     """
@@ -143,23 +163,23 @@ def get_table_config(schema, table):
     """Lee columnas disponibles y la configuración actual de una tabla."""
     query = """
         SELECT c.column_name AS columna,
-               c.data_type AS tipo_dato,
-               c.ordinal_position AS posicion,
-               COALESCE(ca.habilitada, false) AS habilitada,
-               COALESCE(
-                   array_agg(ce.codigo_evento ORDER BY ce.codigo_evento)
-                       FILTER (WHERE ce.habilitada),
-                   ARRAY[]::text[]
-               ) AS operaciones
+            c.data_type AS tipo_dato,
+            c.ordinal_position AS posicion,
+            COALESCE(ca.habilitada, false) AS habilitada,
+            COALESCE(
+                array_agg(ce.codigo_evento ORDER BY ce.codigo_evento)
+                    FILTER (WHERE ce.habilitada),
+                ARRAY[]::text[]
+            ) AS operaciones
         FROM information_schema.columns AS c
         LEFT JOIN autoaudit.tabla_auditada AS ta
-          ON ta.esquema_origen::text = c.table_schema
-         AND ta.nombre_tabla::text = c.table_name
+        ON ta.esquema_origen::text = c.table_schema
+        AND ta.nombre_tabla::text = c.table_name
         LEFT JOIN autoaudit.columna_auditada AS ca
-          ON ca.tabla_auditada_id = ta.tabla_auditada_id
-         AND ca.nombre_columna::text = c.column_name
+        ON ca.tabla_auditada_id = ta.tabla_auditada_id
+        AND ca.nombre_columna::text = c.column_name
         LEFT JOIN autoaudit.configuracion_evento AS ce
-          ON ce.columna_auditada_id = ca.columna_auditada_id
+        ON ce.columna_auditada_id = ca.columna_auditada_id
         WHERE c.table_schema = %s AND c.table_name = %s
         GROUP BY c.column_name, c.data_type, c.ordinal_position, ca.habilitada
         ORDER BY c.ordinal_position
@@ -205,7 +225,7 @@ def configure():
             with db_connection() as conn:
                 existing = conn.execute(
                     """SELECT habilitada FROM autoaudit.tabla_auditada
-                       WHERE esquema_origen = %s::name AND nombre_tabla = %s::name""",
+                    WHERE esquema_origen = %s::name AND nombre_tabla = %s::name""",
                     (schema, table),
                 ).fetchone()
                 # Deshabilita la configuración anterior y vuelve a aplicar
@@ -218,18 +238,23 @@ def configure():
                 for column, operations in selected:
                     conn.execute(
                         """SELECT autoaudit.configurar_columna(
-                               %s::name, %s::name, %s::name, %s::text[]
-                           )""",
+                            %s::name, %s::name, %s::name, %s::text[]
+                        )""",
                         (schema, table, column, operations),
                     )
 
             if selected:
-                flash(f"Auditoría aplicada a {len(selected)} columna(s) de {schema}.{table}.", "success")
+                flash(
+                    f"Auditoría aplicada a {len(selected)} columna(s) de {schema}.{table}.",
+                    "success",
+                )
             else:
                 flash(f"Auditoría desactivada para {schema}.{table}.", "success")
             return redirect(url_for("configure", esquema=schema, tabla=table))
 
-        return render_template("configure.html", schema=schema, table=table, columns=columns)
+        return render_template(
+            "configure.html", schema=schema, table=table, columns=columns
+        )
     except psycopg.Error as exc:
         return render_template("error.html", message=database_error_message(exc)), 500
 
@@ -241,7 +266,10 @@ def synchronize():
     try:
         with db_connection() as conn:
             conn.execute("SELECT autoaudit.sincronizar_diccionario()")
-        flash("El diccionario de tablas y columnas se sincronizó correctamente.", "success")
+        flash(
+            "El diccionario de tablas y columnas se sincronizó correctamente.",
+            "success",
+        )
     except psycopg.Error as exc:
         flash(database_error_message(exc), "danger")
     return redirect(url_for("index"))
@@ -264,27 +292,31 @@ def history():
             page = min(page, pages)
             query = f"""
                 SELECT e.evento_auditoria_id, e.fecha_evento,
-                       ta.esquema_origen::text AS esquema,
-                       ta.nombre_tabla::text AS tabla,
-                       e.codigo_evento AS operacion,
-                       e.usuario_snapshot::text AS usuario,
-                       e.estacion_snapshot AS estacion,
-                       e.direccion_ip::text AS direccion_ip,
-                       e.clave_fila,
-                       d.nombre_columna_snapshot::text AS columna,
-                       d.valor_anterior, d.valor_nuevo
+                    ta.esquema_origen::text AS esquema,
+                    ta.nombre_tabla::text AS tabla,
+                    e.codigo_evento AS operacion,
+                    e.usuario_snapshot::text AS usuario,
+                    e.estacion_snapshot AS estacion,
+                    e.direccion_ip::text AS direccion_ip,
+                    e.clave_fila,
+                    d.nombre_columna_snapshot::text AS columna,
+                    d.valor_anterior, d.valor_nuevo
                 {HISTORY_FROM}
                 WHERE {where_sql}
                 ORDER BY e.fecha_evento DESC, e.evento_auditoria_id DESC,
-                         d.detalle_auditoria_id DESC
+                        d.detalle_auditoria_id DESC
                 LIMIT %s OFFSET %s
             """
             rows = conn.execute(
                 query, [*params, page_size, (page - 1) * page_size]
             ).fetchall()
         return render_template(
-            "history.html", rows=rows, filters=filters, page=page,
-            pages=pages, total=total,
+            "history.html",
+            rows=rows,
+            filters=filters,
+            page=page,
+            pages=pages,
+            total=total,
         )
     except psycopg.Error as exc:
         return render_template("error.html", message=database_error_message(exc)), 500
@@ -330,7 +362,9 @@ def read_history_filters():
         abort(400, description="Las fechas deben tener el formato AAAA-MM-DD.")
 
     if filters["desde"] and filters["hasta"] and filters["desde"] > filters["hasta"]:
-        abort(400, description="La fecha inicial no puede ser posterior a la fecha final.")
+        abort(
+            400, description="La fecha inicial no puede ser posterior a la fecha final."
+        )
     return filters, conditions, params
 
 
@@ -341,19 +375,19 @@ def export_history():
     where_sql = " AND ".join(conditions) if conditions else "TRUE"
     query = f"""
         SELECT e.evento_auditoria_id, e.fecha_evento,
-               ta.esquema_origen::text AS esquema,
-               ta.nombre_tabla::text AS tabla,
-               e.clave_fila,
-               e.codigo_evento AS operacion,
-               e.usuario_snapshot::text AS usuario,
-               e.estacion_snapshot AS estacion,
-               e.direccion_ip::text AS direccion_ip,
-               d.nombre_columna_snapshot::text AS columna,
-               d.valor_anterior, d.valor_nuevo
+                ta.esquema_origen::text AS esquema,
+                ta.nombre_tabla::text AS tabla,
+                e.clave_fila,
+                e.codigo_evento AS operacion,
+                e.usuario_snapshot::text AS usuario,
+                e.estacion_snapshot AS estacion,
+                e.direccion_ip::text AS direccion_ip,
+                d.nombre_columna_snapshot::text AS columna,
+                d.valor_anterior, d.valor_nuevo
         {HISTORY_FROM}
         WHERE {where_sql}
         ORDER BY e.fecha_evento DESC, e.evento_auditoria_id DESC,
-                 d.detalle_auditoria_id DESC
+                d.detalle_auditoria_id DESC
         LIMIT 10000
     """
     try:
@@ -365,20 +399,39 @@ def export_history():
     output = io.StringIO(newline="")
     output.write("\ufeff")  # Ayuda a Excel a reconocer los acentos en UTF-8.
     writer = csv.writer(output)
-    writer.writerow([
-        "evento_id", "fecha", "esquema", "tabla", "clave_fila",
-        "operacion", "usuario", "estacion", "direccion_ip", "columna",
-        "valor_anterior", "valor_nuevo",
-    ])
+    writer.writerow(
+        [
+            "evento_id",
+            "fecha",
+            "esquema",
+            "tabla",
+            "clave_fila",
+            "operacion",
+            "usuario",
+            "estacion",
+            "direccion_ip",
+            "columna",
+            "valor_anterior",
+            "valor_nuevo",
+        ]
+    )
     for row in rows:
-        writer.writerow([
-            row["evento_auditoria_id"], row["fecha_evento"].isoformat(),
-            row["esquema"], row["tabla"], json_csv_value(row["clave_fila"]),
-            row["operacion"], row["usuario"], row["estacion"],
-            row["direccion_ip"], row["columna"],
-            json_csv_value(row["valor_anterior"]),
-            json_csv_value(row["valor_nuevo"]),
-        ])
+        writer.writerow(
+            [
+                row["evento_auditoria_id"],
+                row["fecha_evento"].isoformat(),
+                row["esquema"],
+                row["tabla"],
+                json_csv_value(row["clave_fila"]),
+                row["operacion"],
+                row["usuario"],
+                row["estacion"],
+                row["direccion_ip"],
+                row["columna"],
+                json_csv_value(row["valor_anterior"]),
+                json_csv_value(row["valor_nuevo"]),
+            ]
+        )
     response = make_response(output.getvalue())
     response.headers["Content-Type"] = "text/csv; charset=utf-8"
     response.headers["Content-Disposition"] = (
