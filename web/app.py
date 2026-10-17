@@ -415,7 +415,10 @@ def database_error_message(exc):
 if __name__ == "__main__":
     # La aplicación queda disponible solo en el equipo local durante esta primera versión.
     open_browser = os.getenv("AUTOAUDIT_OPEN_BROWSER", "true").lower() not in {
-        "0", "false", "no", "off"
+        "0",
+        "false",
+        "no",
+        "off",
     }
     browser_url = "http://127.0.0.1:5000"
 
