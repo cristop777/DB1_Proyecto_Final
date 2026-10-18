@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Iniciar sesión · AutoAudit{% endblock %}
+{% block title %}Iniciar sesión · Auto Auditoría{% endblock %}
 {% block content %}
 <section class="login-card card">
-  <p class="eyebrow">Acceso administrativo</p>
+  <p class="eyebrow">Acceso al sistema</p>
   <h1>Inicia sesión</h1>
-  <p class="muted login-description">Ingresa con la cuenta administrativa configurada para esta instalación.</p>
+  <p class="muted login-description">Ingresa con tu usuario y contraseña.</p>
   <form method="post" action="{{ url_for('login') }}" class="login-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>Usuario<input name="usuario" type="text" autocomplete="username" required autofocus></label>
@@ -13,3 +13,4 @@
   </form>
 </section>
 {% endblock %}
+

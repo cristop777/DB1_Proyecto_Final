@@ -1,7 +1,11 @@
---Realiza las pruebas funcionales
+-- Realiza pruebas funcionales de auditoría.
+-- Ejecuta este archivo conectado a control_cambios_db,
+-- después de configurar public.clientes_demo con el script 05.
+
 BEGIN;
 
--- INSERT
+
+-- Prueba INSERT.
 INSERT INTO public.clientes_demo (nombre, correo, ciudad)
 VALUES (
     'Prueba AutoAudit',
@@ -9,16 +13,19 @@ VALUES (
     'Guatemala'
 );
 
--- UPDATE
+
+-- Prueba UPDATE.
 UPDATE public.clientes_demo
 SET correo = 'actualizada.' || txid_current() || '@example.com'
 WHERE correo = 'prueba.' || txid_current() || '@example.com';
 
--- DELETE
+
+-- Prueba DELETE.
 DELETE FROM public.clientes_demo
 WHERE correo = 'actualizada.' || txid_current() || '@example.com';
 
--- Deben aparecer los tres eventos de prueba.
+
+-- Deben aparecer los tres eventos de prueba en el historial.
 SELECT
     fecha_evento,
     operacion,
@@ -26,7 +33,7 @@ SELECT
     columna,
     valor_anterior,
     valor_nuevo
-FROM autoaudit.v_historial_detallado
+FROM trazabilidad.v_trz_historial_detallado
 WHERE columna = 'correo'
   AND (
       valor_anterior #>> '{}' LIKE 'prueba.%@example.com'
@@ -36,4 +43,6 @@ WHERE columna = 'correo'
   )
 ORDER BY fecha_evento;
 
+
+-- Revierte las filas y eventos temporales generados por esta prueba.
 ROLLBACK;

@@ -1,57 +1,47 @@
-# Interfaz web de AutoAudit
+# Auto Auditoría: interfaz web
 
-Primera versión de la interfaz de administración y consulta, implementada con Flask, HTML y CSS. La aplicación se conecta a PostgreSQL y reutiliza las funciones y tablas del esquema `autoaudit`.
+Interfaz local para gestionar una tabla de demostración, configurar la auditoría y consultar el historial de cambios. Está desarrollada con Flask, HTML y CSS, y se conecta a PostgreSQL mediante la cuenta técnica `autoaudit_app`.
 
-## Funciones disponibles
+La aplicación usa la base de datos `control_cambios_db` y el esquema `trazabilidad`.
 
-- Lista tablas y columnas visibles para el usuario configurado en PostgreSQL.
-- Permite activar la auditoría por columna y operación (`insert`, `update`, `delete`).
-- Permite desactivar la auditoría de una tabla al guardar una selección vacía.
-- Sincroniza el diccionario de tablas y columnas.
-- Consulta el historial por usuario, columna, esquema, tabla, operación y rango de fechas.
-- Pagina el historial en grupos de 50 resultados y exporta los filtros actuales a CSV (máximo 10 000 filas por descarga).
-- Protege las pantallas con una cuenta administrativa local y contraseña almacenada como hash.
+## Funciones
+
+- Gestiona registros de `public.clientes_demo`: alta, consulta, edición y eliminación.
+- Audita los cambios de las columnas `nombre`, `correo` y `ciudad`.
+- Configura columnas y operaciones auditadas para las tablas visibles a la cuenta PostgreSQL de la aplicación.
+- Sincroniza las tablas y columnas disponibles desde el diccionario de PostgreSQL.
+- Consulta el historial por usuario, columna, esquema, tabla, operación y fechas.
+- Pagina los resultados y permite exportar hasta 10 000 filas a CSV.
+- Identifica los cambios realizados desde la web con el usuario que inició sesión, además de conservar el usuario PostgreSQL de la conexión.
+- Protege las rutas con inicio de sesión, tokens CSRF en formularios y perfiles de acceso.
+
+## Perfiles web
+
+Los perfiles se configuran en `web/.env`. No son cuentas independientes de PostgreSQL: todos se conectan mediante `AUTOAUDIT_DB_USER`.
+
+| Perfil | Acceso |
+|---|---|
+| `operador` | Clientes demo |
+| `auditor` | Clientes demo e historial de control de cambios |
+| `admin` | Clientes demo, historial y configuración de auditoría |
+
+La cuenta administradora necesita pertenecer al rol PostgreSQL `autoaudit_admin` para usar la configuración. Los permisos para operar `clientes_demo` se conceden en `05_configuracion_demo.sql`.
 
 ## Requisitos previos
 
-1. Instala PostgreSQL y crea la estructura de AutoAudit siguiendo el `README.md` de la carpeta principal.
-2. Confirma que existe `public.clientes_demo` o alguna otra tabla de prueba.
-3. Concede al usuario de conexión la membresía del rol administrador. Ejecuta esto con una cuenta autorizada, reemplazando `cristop` por tu usuario real:
+1. Instala PostgreSQL y prepara `control_cambios_db` ejecutando los scripts SQL del proyecto en el orden documentado en el README principal.
+2. Crea `public.clientes_demo` y habilita sus columnas auditadas mediante `05_configuracion_demo.sql`.
+3. Concede al usuario PostgreSQL de la aplicación la membresía administrativa, si usará las pantallas de configuración. Ejecuta con una cuenta autorizada y reemplaza `cristop` por el rol PostgreSQL correspondiente:
 
    ```sql
    GRANT autoaudit_admin TO cristop;
    ```
 
-4. El usuario también debe tener permisos para ver las tablas de origen que quiere configurar. PostgreSQL solo muestra en el diccionario las tablas que ese usuario puede ver.
-
-## Instalación en Windows (PowerShell)
-
-Abre PowerShell dentro de esta carpeta (`web`) y ejecuta:
-
-```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-py -m pip install -r requirements.txt
-Copy-Item .env.example .env
-```
-
-Edita `.env` y completa `AUTOAUDIT_DB_USER`, `AUTOAUDIT_DB_PASSWORD`, `AUTOAUDIT_WEB_USER` y `FLASK_SECRET_KEY`. Genera un hash para la contraseña web dentro del entorno virtual:
-
-```powershell
-py -c "from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass('Contraseña web: ')))"
-```
-
-Copia el hash resultante en `AUTOAUDIT_WEB_PASSWORD_HASH` y después inicia la aplicación:
-
-```powershell
-py app.py
-```
-
-Abre `http://127.0.0.1:5000` en el navegador. Para detener el servidor, vuelve a PowerShell y presiona `Ctrl+C`.
+4. Para registrar quién inició sesión en la web, aplica también las actualizaciones `09_contexto_usuario_web.sql` y `10_actualizar_funcion_usuario_web.sql`, después de crear las tablas y funciones base.
 
 ## Instalación en Ubuntu
 
-Desde esta carpeta, instala Python, crea un entorno virtual y ejecuta:
+Desde una terminal en la carpeta `web`:
 
 ```bash
 python3 -m venv .venv
@@ -60,28 +50,60 @@ python -m pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edita `.env` con las credenciales locales de PostgreSQL, el nombre de usuario web y una clave secreta propia. Genera el hash de la contraseña dentro del entorno virtual:
+Edita `.env` y configura la conexión de PostgreSQL y las cuentas web:
 
-```bash
-python -c 'from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass("Contraseña web: ")))'
+```ini
+AUTOAUDIT_DB_HOST=127.0.0.1
+AUTOAUDIT_DB_PORT=5432
+AUTOAUDIT_DB_NAME=control_cambios_db
+AUTOAUDIT_DB_USER=autoaudit_app
+AUTOAUDIT_DB_PASSWORD=clave_de_postgresql
+
+AUTOAUDIT_WEB_USER=admin
+AUTOAUDIT_WEB_PASSWORD_HASH=hash_de_admin
+
+AUTOAUDIT_WEB_CLIENT_USER=operador
+AUTOAUDIT_WEB_CLIENT_PASSWORD_HASH=hash_de_operador
+
+AUTOAUDIT_WEB_AUDITOR_USER=auditor
+AUTOAUDIT_WEB_AUDITOR_PASSWORD_HASH=hash_de_auditor
+
+FLASK_SECRET_KEY=clave_aleatoria_larga
+AUTOAUDIT_OPEN_BROWSER=true
 ```
 
-Copia el hash resultante en `AUTOAUDIT_WEB_PASSWORD_HASH` y después inicia con:
+Genera un hash seguro para cada contraseña web, ejecutando el comando por separado para cada cuenta:
+
+```bash
+python -c 'from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass("Contraseña: ")))'
+```
+
+Genera la clave de sesión de Flask:
+
+```bash
+python -c 'import secrets; print(secrets.token_hex(32))'
+```
+
+Pega cada resultado en la variable correspondiente de `.env`. No pongas las contraseñas web en texto plano.
+
+## Iniciar la aplicación
+
+Con el entorno virtual activo y desde la carpeta `web`:
 
 ```bash
 python app.py
 ```
 
-La aplicación intenta abrir el navegador automáticamente cuando Ubuntu tiene un escritorio gráfico. Si ejecutas VS Code conectado por SSH a una VM sin escritorio, el terminal indicará que debes reenviar el puerto `5000` desde la pestaña **Ports/Puertos** de VS Code y abrir la URL reenviada. La primera versión escucha únicamente en `127.0.0.1`, por lo que está pensada para uso local durante el desarrollo y la demostración.
+Si ejecutas VS Code conectado por SSH a una VM sin escritorio gráfico, reenvía el puerto `5000` desde la pestaña **Ports/Puertos** y abre la dirección que muestre VS Code. La aplicación escucha en `127.0.0.1` para la demostración local. Para detenerla, presiona `Ctrl+C` en la terminal.
 
 ## Seguridad y operación
 
-- No subas `.env` ni escribas la contraseña en `app.py`. El `.gitignore` principal excluye estos archivos.
-- Usa una cuenta de aplicación con los permisos mínimos necesarios; no uses el superusuario de PostgreSQL como configuración permanente.
-- El inicio de sesión protege la interfaz; configura una cuenta y un hash únicos en `.env`. Mantén el servidor en `127.0.0.1`; no lo publiques en una red ni en Internet.
-- El inicio de sesión restringe la administración web. Los eventos de datos siguen registrando el usuario PostgreSQL de la conexión que ejecutó la operación, por ejemplo `cristop` o `autoaudit_app`.
-- La selección guardada sustituye el conjunto de operaciones activas de esa tabla. Guardar todo desmarcado desactiva sus triggers/configuración activa.
-- La creación o modificación de triggers se realiza mediante las funciones PostgreSQL del proyecto. Si PostgreSQL niega la operación, revisa la membresía de `autoaudit_admin` y los permisos sobre la tabla de origen.
+- No subas `web/.env` al repositorio. El archivo contiene credenciales; solo se debe subir `.env.example` con valores de ejemplo.
+- No uses el superusuario de PostgreSQL como cuenta de conexión de la aplicación.
+- La cuenta `autoaudit_app` necesita permisos de lectura y escritura sobre `public.clientes_demo`, además de los permisos de lectura y configuración que requieran sus funciones.
+- Los formularios de cambios usan POST y protección CSRF. Los valores SQL se envían como parámetros.
+- Los roles de la web limitan las rutas disponibles, pero comparten la conexión PostgreSQL de `autoaudit_app`. El perfil web se registra como contexto de auditoría; `usuario_snapshot` conserva el usuario PostgreSQL.
+- La tabla de bitácora no debe modificarse directamente desde la interfaz.
 
 ## Estructura
 
@@ -90,11 +112,14 @@ web/
 ├── app.py
 ├── requirements.txt
 ├── .env.example
+├── README.md
 ├── templates/
 │   ├── base.html
 │   ├── login.html
 │   ├── index.html
 │   ├── configure.html
+│   ├── clientes.html
+│   ├── editar_cliente.html
 │   ├── history.html
 │   └── error.html
 └── static/

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Editar cliente · Auto Auditoría{% endblock %}
+{% block content %}
+<section class="hero compact">
+  <div><p class="eyebrow">Operaciones auditadas</p><h1>Editar cliente</h1><p class="muted">Los valores que cambien se guardarán en el historial.</p></div>
+</section>
+<section class="card edit-card">
+  <form class="client-form edit-form" method="post" action="{{ url_for('edit_client', client_id=client.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Nombre <input name="nombre" maxlength="300" value="{{ client.nombre }}" required></label>
+    <label>Correo <input name="correo" type="email" maxlength="320" value="{{ client.correo }}" required></label>
+    <label>Ciudad <input name="ciudad" maxlength="200" value="{{ client.ciudad or '' }}"></label>
+    <div class="form-footer"><a class="back-link" href="{{ url_for('clients') }}">Cancelar y volver</a><button class="button" type="submit">Guardar cambios</button></div>
+  </form>
+</section>
+{% endblock %}
+
