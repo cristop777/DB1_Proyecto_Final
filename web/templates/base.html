@@ -3,21 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}AutoAudit{% endblock %}</title>
+  <title>{% block title %}Auto Auditoría{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">A</span> AutoAudit</a>
+    <a class="brand" href="{{ url_for('clients') if session.get('web_user') else url_for('login') }}"><span class="brand-mark">A</span> Auto Auditoría</a>
     <nav aria-label="Navegación principal">
       {% if session.get('web_user') %}
-        <a href="{{ url_for('index') }}">Configuración</a>
-        <a href="{{ url_for('history') }}">Historial</a>
-        <span class="nav-user">{{ session.get('web_user') }}</span>
+        <a href="{{ url_for('clients') }}">Clientes demo</a>
+        {% if session.get('web_role') in ['admin', 'auditor'] %}
+          <a href="{{ url_for('history') }}">Historial de control de cambios</a>
+        {% endif %}
+        {% if session.get('web_role') == 'admin' %}
+          <a href="{{ url_for('index') }}">Configuración de auditoría</a>
+        {% endif %}
         <form class="logout-form" method="post" action="{{ url_for('logout') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button class="nav-logout" type="submit">Cerrar sesión</button>
         </form>
+        <span class="nav-user">{{ session.get('web_user') }}</span>
       {% else %}
         <a href="{{ url_for('login') }}">Iniciar sesión</a>
       {% endif %}
@@ -35,6 +40,7 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
-  <footer>AutoAudit · Proyecto universitario · Interfaz local de demostración</footer>
+  <footer>Auto Auditoría · Proyecto universitario · Interfaz local de demostración</footer>
 </body>
 </html>
+

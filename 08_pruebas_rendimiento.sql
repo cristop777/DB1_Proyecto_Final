@@ -5,8 +5,8 @@
 --   con la auditoría activa y comparar 10,000 filas con el trigger desactivado.
 --
 -- Requisitos previos:
---   1. Ejecutar conectado a la base autoaudit_db.
---   2. Deben existir public.clientes_demo y el trigger trg_autoaudit_1.
+--   1. Ejecutar conectado a la base control_cambios_db.
+--   2. Deben existir public.clientes_demo y el trigger trg_trz_1.
 --   3. La configuración de auditoría para public.clientes_demo debe estar activa.
 --   4. La columna correo debe tener habilitada la operación insert.
 --
@@ -35,17 +35,18 @@ SELECT
     ta.habilitada AS tabla_habilitada,
     ca.habilitada AS columna_habilitada,
     ce.habilitada AS evento_habilitado
-FROM autoaudit.tabla_auditada AS ta
-JOIN autoaudit.columna_auditada AS ca
+FROM trazabilidad.trz_tabla_origen AS ta
+JOIN trazabilidad.trz_columna_origen AS ca
   ON ca.tabla_auditada_id = ta.tabla_auditada_id
-JOIN autoaudit.configuracion_evento AS ce
+JOIN trazabilidad.trz_regla_auditoria AS ce
   ON ce.columna_auditada_id = ca.columna_auditada_id
 WHERE ta.esquema_origen = 'public'
   AND ta.nombre_tabla = 'clientes_demo'
   AND ca.nombre_columna = 'correo'
   AND ce.codigo_evento = 'insert';
 
--- Debe mostrar trg_autoaudit_1 con tgenabled = 'O'.
+
+-- Debe mostrar trg_trz_1 con tgenabled = 'O'.
 -- Si el nombre del trigger es distinto, úsalo en la prueba sin auditoría.
 SELECT
     t.tgname AS nombre_trigger,
@@ -117,7 +118,7 @@ ROLLBACK;
 BEGIN;
 
 ALTER TABLE public.clientes_demo
-    DISABLE TRIGGER trg_autoaudit_1;
+    DISABLE TRIGGER trg_trz_1;
 
 EXPLAIN (ANALYZE, BUFFERS)
 INSERT INTO public.clientes_demo (nombre, correo, ciudad)

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Clientes demo · Auto Auditoría{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <p class="eyebrow">Operaciones auditadas</p>
+    <h1>Clientes demo</h1>
+    <p class="muted">Crea, edita o elimina clientes y revisa los cambios en el historial.</p>
+  </div>
+  <a class="button button-secondary" href="{{ url_for('history', esquema='public', tabla='clientes_demo') }}">Ver historial</a>
+</section>
+
+<section class="card">
+  <div class="section-heading">
+    <div>
+      <h2>Agregar cliente</h2>
+      <p class="muted small">Los cambios en nombre, correo y ciudad se envían a la bitácora.</p>
+    </div>
+  </div>
+  <form class="client-form" method="post" action="{{ url_for('clients') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Nombre <input name="nombre" maxlength="300" required></label>
+    <label>Correo <input name="correo" type="email" maxlength="320" required></label>
+    <label>Ciudad <input name="ciudad" maxlength="200"></label>
+    <button class="button" type="submit">Guardar cliente</button>
+  </form>
+</section>
+
+<section class="card">
+  <div class="section-heading">
+    <div><h2>Registros</h2><p class="muted small">Se muestran hasta los 500 clientes más recientes.</p></div>
+    <span class="count">{{ clients|length }} registros</span>
+  </div>
+  {% if clients %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Nombre</th><th>Correo</th><th>Ciudad</th><th class="align-right">Acciones</th></tr></thead>
+        <tbody>
+          {% for client in clients %}
+          <tr>
+            <td>{{ client.id }}</td><td>{{ client.nombre }}</td><td>{{ client.correo }}</td><td>{{ client.ciudad or '—' }}</td>
+            <td class="align-right action-cell">
+              <a class="button button-secondary button-small" href="{{ url_for('edit_client', client_id=client.id) }}">Editar</a>
+              <form method="post" action="{{ url_for('delete_client', client_id=client.id) }}" onsubmit="return confirm('¿Eliminar este cliente? La operación quedará registrada en el historial.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="button button-danger button-small" type="submit">Eliminar</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty"><strong>No hay clientes todavía.</strong><span>Agrega un registro con el formulario para generar el primer evento de auditoría.</span></div>
+  {% endif %}
+</section>
+{% endblock %}
+

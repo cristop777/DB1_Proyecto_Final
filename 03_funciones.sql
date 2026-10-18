@@ -1,10 +1,18 @@
--- crea las funciones para auditorias
+-- Crea las funciones del sistema de trazabilidad.
+-- Ejecuta este archivo conectado a control_cambios_db,
+-- después de 02_esquema_tablas.sql.
 
-CREATE OR REPLACE FUNCTION autoaudit.configurar_columna(p_esquema name, p_tabla name, p_columna name, p_operaciones text[])
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'pg_temp'
+-- Configura una columna y las operaciones que se deben auditar.
+CREATE OR REPLACE FUNCTION trazabilidad.trz_configurar_columna(
+    p_esquema name,
+    p_tabla name,
+    p_columna name,
+    p_operaciones text[]
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'pg_temp'
 AS $function$
 DECLARE
     v_tabla_id bigint;
@@ -31,7 +39,7 @@ BEGIN
           AND t.table_type = 'BASE TABLE'
           AND t.table_schema <> 'information_schema'
           AND left(t.table_schema, 3) <> 'pg_'
-          AND t.table_schema <> 'autoaudit'
+          AND t.table_schema <> 'trazabilidad'
     ) THEN
         RAISE EXCEPTION 'No existe la tabla de usuario %.%', p_esquema, p_tabla;
     END IF;
@@ -47,21 +55,24 @@ BEGIN
             p_columna, p_esquema, p_tabla;
     END IF;
 
-    INSERT INTO autoaudit.tabla_auditada (esquema_origen, nombre_tabla)
+    INSERT INTO trazabilidad.trz_tabla_origen (
+        esquema_origen,
+        nombre_tabla
+    )
     VALUES (p_esquema, p_tabla)
     ON CONFLICT (esquema_origen, nombre_tabla) DO NOTHING;
 
     SELECT tabla_auditada_id
       INTO v_tabla_id
-      FROM autoaudit.tabla_auditada
+      FROM trazabilidad.trz_tabla_origen
      WHERE esquema_origen = p_esquema
        AND nombre_tabla = p_tabla;
 
-    UPDATE autoaudit.tabla_auditada
+    UPDATE trazabilidad.trz_tabla_origen
        SET habilitada = true
      WHERE tabla_auditada_id = v_tabla_id;
 
-    INSERT INTO autoaudit.columna_auditada (
+    INSERT INTO trazabilidad.trz_columna_origen (
         tabla_auditada_id,
         nombre_columna,
         tipo_dato,
@@ -85,7 +96,7 @@ BEGIN
         habilitada = true
     RETURNING columna_auditada_id INTO v_columna_id;
 
-    INSERT INTO autoaudit.configuracion_evento (
+    INSERT INTO trazabilidad.trz_regla_auditoria (
         columna_auditada_id,
         codigo_evento,
         habilitada
@@ -98,17 +109,22 @@ BEGIN
     ON CONFLICT (columna_auditada_id, codigo_evento)
     DO UPDATE SET habilitada = true;
 
-    PERFORM autoaudit.instalar_trigger(v_tabla_id);
+    PERFORM trazabilidad.trz_instalar_trigger(v_tabla_id);
 END;
 $function$;
 
--- DROP FUNCTION autoaudit.desactivar_operacion(name, name, name, text);
 
-CREATE OR REPLACE FUNCTION autoaudit.desactivar_operacion(p_esquema name, p_tabla name, p_columna name, p_operacion text)
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'pg_temp'
+-- Desactiva una operación para una columna específica.
+CREATE OR REPLACE FUNCTION trazabilidad.trz_desactivar_operacion(
+    p_esquema name,
+    p_tabla name,
+    p_columna name,
+    p_operacion text
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'pg_temp'
 AS $function$
 DECLARE
     v_tabla_id bigint;
@@ -122,8 +138,8 @@ BEGIN
 
     SELECT ta.tabla_auditada_id, ca.columna_auditada_id
       INTO v_tabla_id, v_columna_id
-      FROM autoaudit.tabla_auditada AS ta
-      JOIN autoaudit.columna_auditada AS ca
+      FROM trazabilidad.trz_tabla_origen AS ta
+      JOIN trazabilidad.trz_columna_origen AS ca
         ON ca.tabla_auditada_id = ta.tabla_auditada_id
      WHERE ta.esquema_origen = p_esquema
        AND ta.nombre_tabla = p_tabla
@@ -134,43 +150,44 @@ BEGIN
             p_esquema, p_tabla, p_columna;
     END IF;
 
-    UPDATE autoaudit.configuracion_evento
+    UPDATE trazabilidad.trz_regla_auditoria
        SET habilitada = false
      WHERE columna_auditada_id = v_columna_id
        AND codigo_evento = v_operacion;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'La operación % no está configurada para esa columna',
+        RAISE EXCEPTION
+            'La operación % no está configurada para esa columna',
             v_operacion;
     END IF;
 
-    -- Si esa columna ya no tiene operaciones activas, también se deshabilita.
-    UPDATE autoaudit.columna_auditada AS ca
+    -- Si la columna ya no tiene operaciones activas, se deshabilita.
+    UPDATE trazabilidad.trz_columna_origen AS ca
        SET habilitada = false
      WHERE ca.columna_auditada_id = v_columna_id
        AND NOT EXISTS (
            SELECT 1
-           FROM autoaudit.configuracion_evento AS ce
+           FROM trazabilidad.trz_regla_auditoria AS ce
            WHERE ce.columna_auditada_id = ca.columna_auditada_id
              AND ce.habilitada
        );
 
-    -- Si ninguna columna de la tabla sigue habilitada, se apaga la tabla
-    -- y se elimina el trigger generado.
+    -- Si no quedan columnas activas, se deshabilita la tabla
+    -- y se elimina su trigger generado.
     IF NOT EXISTS (
         SELECT 1
-        FROM autoaudit.columna_auditada AS ca
-        JOIN autoaudit.configuracion_evento AS ce
+        FROM trazabilidad.trz_columna_origen AS ca
+        JOIN trazabilidad.trz_regla_auditoria AS ce
           ON ce.columna_auditada_id = ca.columna_auditada_id
         WHERE ca.tabla_auditada_id = v_tabla_id
           AND ca.habilitada
           AND ce.habilitada
     ) THEN
-        UPDATE autoaudit.tabla_auditada
+        UPDATE trazabilidad.trz_tabla_origen
            SET habilitada = false
          WHERE tabla_auditada_id = v_tabla_id;
 
-        SELECT ('trg_autoaudit_' || v_tabla_id::text)::name
+        SELECT ('trg_trz_' || v_tabla_id::text)::name
           INTO v_trigger;
 
         IF to_regclass(format('%I.%I', p_esquema, p_tabla)) IS NOT NULL THEN
@@ -181,16 +198,18 @@ BEGIN
         END IF;
     END IF;
 END;
-$function$
-;
+$function$;
 
--- DROP FUNCTION autoaudit.desactivar_tabla(name, name);
 
-CREATE OR REPLACE FUNCTION autoaudit.desactivar_tabla(p_esquema name, p_tabla name)
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'pg_temp'
+-- Desactiva toda la auditoría de una tabla y elimina su trigger.
+CREATE OR REPLACE FUNCTION trazabilidad.trz_desactivar_tabla(
+    p_esquema name,
+    p_tabla name
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'pg_temp'
 AS $function$
 DECLARE
     v_tabla_id bigint;
@@ -198,7 +217,7 @@ DECLARE
 BEGIN
     SELECT tabla_auditada_id
       INTO v_tabla_id
-      FROM autoaudit.tabla_auditada
+      FROM trazabilidad.trz_tabla_origen
      WHERE esquema_origen = p_esquema
        AND nombre_tabla = p_tabla;
 
@@ -207,21 +226,21 @@ BEGIN
             p_esquema, p_tabla;
     END IF;
 
-    UPDATE autoaudit.configuracion_evento AS ce
+    UPDATE trazabilidad.trz_regla_auditoria AS ce
        SET habilitada = false
-      FROM autoaudit.columna_auditada AS ca
+      FROM trazabilidad.trz_columna_origen AS ca
      WHERE ca.tabla_auditada_id = v_tabla_id
        AND ce.columna_auditada_id = ca.columna_auditada_id;
 
-    UPDATE autoaudit.columna_auditada
+    UPDATE trazabilidad.trz_columna_origen
        SET habilitada = false
      WHERE tabla_auditada_id = v_tabla_id;
 
-    UPDATE autoaudit.tabla_auditada
+    UPDATE trazabilidad.trz_tabla_origen
        SET habilitada = false
      WHERE tabla_auditada_id = v_tabla_id;
 
-    SELECT ('trg_autoaudit_' || v_tabla_id::text)::name
+    SELECT ('trg_trz_' || v_tabla_id::text)::name
       INTO v_trigger;
 
     IF to_regclass(format('%I.%I', p_esquema, p_tabla)) IS NOT NULL THEN
@@ -231,16 +250,15 @@ BEGIN
         );
     END IF;
 END;
-$function$
-;
+$function$;
 
--- DROP FUNCTION autoaudit.fn_completar_contexto();
 
-CREATE OR REPLACE FUNCTION autoaudit.fn_completar_contexto()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'pg_temp'
+-- Completa la IP y la estación de trabajo de un evento de auditoría.
+CREATE OR REPLACE FUNCTION trazabilidad.trz_completar_contexto()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'pg_temp'
 AS $function$
 DECLARE
     v_estacion_solicitada text;
@@ -250,12 +268,12 @@ BEGIN
     NEW.direccion_ip := COALESCE(NEW.direccion_ip, inet_client_addr());
 
     v_estacion_solicitada :=
-        NULLIF(current_setting('autoaudit.estacion_nombre', true), '');
+        NULLIF(current_setting('trazabilidad.estacion_nombre', true), '');
 
     IF v_estacion_solicitada IS NOT NULL THEN
         SELECT estacion_trabajo_id, nombre_estacion
           INTO v_estacion_id, v_estacion_nombre
-          FROM autoaudit.estacion_trabajo
+          FROM trazabilidad.trz_estacion
          WHERE nombre_estacion = v_estacion_solicitada
            AND habilitada;
 
@@ -263,7 +281,7 @@ BEGIN
             NEW.estacion_trabajo_id := v_estacion_id;
             NEW.estacion_snapshot := v_estacion_nombre;
         ELSE
-            -- Conserva el nombre informado aunque no esté registrado.
+            -- Conserva el nombre recibido aunque no esté registrado.
             NEW.estacion_trabajo_id := NULL;
             NEW.estacion_snapshot := v_estacion_solicitada;
         END IF;
@@ -271,19 +289,16 @@ BEGIN
 
     RETURN NEW;
 END;
-$function$
-;
+$function$;
 
--- DROP FUNCTION autoaudit.fn_registrar_cambio();
 
--- Registra los cambios de una fila y los detalles de las columnas configuradas.
--- Recorre la configuración una sola vez y crea el evento solo al encontrar
--- el primer detalle válido. En UPDATE, ignora columnas cuyo valor no cambió.
-CREATE OR REPLACE FUNCTION autoaudit.fn_registrar_cambio()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'pg_temp'
+-- Registra los cambios de cada fila y el detalle de cada columna configurada.
+-- En UPDATE omite las columnas cuyo valor no cambió.
+CREATE OR REPLACE FUNCTION trazabilidad.trz_registrar_cambio()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'pg_temp'
 AS $function$
 DECLARE
     v_codigo_evento text := lower(TG_OP);
@@ -302,7 +317,7 @@ DECLARE
 BEGIN
     SELECT tabla_auditada_id, habilitada
       INTO v_tabla_id, v_tabla_habilitada
-      FROM autoaudit.tabla_auditada
+      FROM trazabilidad.trz_tabla_origen
      WHERE esquema_origen = TG_TABLE_SCHEMA::name
        AND nombre_tabla = TG_TABLE_NAME::name;
 
@@ -318,8 +333,8 @@ BEGIN
         v_fila_nueva := to_jsonb(NEW);
     END IF;
 
-    -- Obtiene las columnas de la clave primaria en el orden definido por
-    -- PostgreSQL. Las claves compuestas se almacenan como objetos JSON.
+    -- Obtiene la clave primaria respetando el orden de sus columnas.
+    -- También funciona con claves compuestas.
     IF TG_OP <> 'INSERT' THEN
         SELECT jsonb_object_agg(
                    a.attname,
@@ -354,9 +369,8 @@ BEGIN
            AND pk.contype = 'p';
     END IF;
 
-    -- La estructura distingue la clave anterior y la nueva. En INSERT la
-    -- anterior es null; en DELETE la nueva es null. Si cambia la clave
-    -- primaria durante un UPDATE, ambos valores quedan preservados.
+    -- Conserva la clave anterior y nueva. Si la tabla no tiene clave
+    -- primaria, clave_fila queda en NULL.
     IF v_clave_anterior IS NOT NULL OR v_clave_nueva IS NOT NULL THEN
         v_clave_fila := jsonb_build_object(
             'anterior', v_clave_anterior,
@@ -364,13 +378,13 @@ BEGIN
         );
     END IF;
 
-    -- Recorre una sola vez las columnas habilitadas para esta operación.
+    -- Recorre una sola vez las columnas y reglas activas.
     FOR v_columna IN
         SELECT
             ce.configuracion_evento_id,
             ca.nombre_columna
-        FROM autoaudit.columna_auditada AS ca
-        JOIN autoaudit.configuracion_evento AS ce
+        FROM trazabilidad.trz_columna_origen AS ca
+        JOIN trazabilidad.trz_regla_auditoria AS ce
           ON ce.columna_auditada_id = ca.columna_auditada_id
         WHERE ca.tabla_auditada_id = v_tabla_id
           AND ca.habilitada
@@ -390,18 +404,17 @@ BEGIN
                 v_fila_nueva -> v_columna.nombre_columna::text;
         END IF;
 
-        -- Evita registrar detalles de columnas sin cambios en UPDATE.
+        -- No registra detalles de columnas sin cambios durante UPDATE.
         IF TG_OP = 'UPDATE'
            AND v_valor_anterior IS NOT DISTINCT FROM v_valor_nuevo THEN
             CONTINUE;
         END IF;
 
-        -- Crea el evento al encontrar el primer detalle válido. De esta forma,
-        -- no se guarda un evento vacío si no hay columnas configuradas o cambiadas.
+        -- Crea el evento al encontrar el primer detalle válido.
         IF v_evento_id IS NULL THEN
             SELECT usuario_auditado_id
               INTO v_usuario_id
-              FROM autoaudit.usuario_auditado
+              FROM trazabilidad.trz_usuario
              WHERE nombre_usuario_bd = session_user
                AND habilitado;
 
@@ -409,7 +422,7 @@ BEGIN
                 v_usuario_id := NULL;
             END IF;
 
-            INSERT INTO autoaudit.evento_auditoria (
+            INSERT INTO trazabilidad.trz_evento (
                 tabla_auditada_id,
                 codigo_evento,
                 usuario_auditado_id,
@@ -432,7 +445,7 @@ BEGIN
             RETURNING evento_auditoria_id INTO v_evento_id;
         END IF;
 
-        INSERT INTO autoaudit.detalle_auditoria (
+        INSERT INTO trazabilidad.trz_cambio_columna (
             evento_auditoria_id,
             configuracion_evento_id,
             codigo_evento,
@@ -452,13 +465,15 @@ BEGIN
 
     RETURN NULL;
 END;
-$function$
-;
--- DROP FUNCTION autoaudit.instalar_trigger(int8);
+$function$;
 
-CREATE OR REPLACE FUNCTION autoaudit.instalar_trigger(p_tabla_auditada_id bigint)
- RETURNS void
- LANGUAGE plpgsql
+
+-- Instala o reemplaza el trigger de auditoría de una tabla de origen.
+CREATE OR REPLACE FUNCTION trazabilidad.trz_instalar_trigger(
+    p_tabla_auditada_id bigint
+)
+RETURNS void
+LANGUAGE plpgsql
 AS $function$
 DECLARE
     v_esquema name;
@@ -468,7 +483,7 @@ DECLARE
 BEGIN
     SELECT esquema_origen, nombre_tabla, habilitada
       INTO v_esquema, v_tabla, v_habilitada
-      FROM autoaudit.tabla_auditada
+      FROM trazabilidad.trz_tabla_origen
      WHERE tabla_auditada_id = p_tabla_auditada_id;
 
     IF NOT FOUND THEN
@@ -486,8 +501,8 @@ BEGIN
 
     IF NOT EXISTS (
         SELECT 1
-        FROM autoaudit.columna_auditada AS ca
-        JOIN autoaudit.configuracion_evento AS ce
+        FROM trazabilidad.trz_columna_origen AS ca
+        JOIN trazabilidad.trz_regla_auditoria AS ce
           ON ce.columna_auditada_id = ca.columna_auditada_id
         WHERE ca.tabla_auditada_id = p_tabla_auditada_id
           AND ca.habilitada
@@ -496,7 +511,7 @@ BEGIN
         RAISE EXCEPTION 'La tabla no tiene columnas y operaciones habilitadas';
     END IF;
 
-    v_trigger := ('trg_autoaudit_' || p_tabla_auditada_id::text)::name;
+    v_trigger := ('trg_trz_' || p_tabla_auditada_id::text)::name;
 
     EXECUTE format(
         'DROP TRIGGER IF EXISTS %I ON %I.%I',
@@ -507,23 +522,22 @@ BEGIN
         'CREATE TRIGGER %I
          AFTER INSERT OR UPDATE OR DELETE ON %I.%I
          FOR EACH ROW
-         EXECUTE FUNCTION autoaudit.fn_registrar_cambio()',
+         EXECUTE FUNCTION trazabilidad.trz_registrar_cambio()',
         v_trigger, v_esquema, v_tabla
     );
 END;
-$function$
-;
+$function$;
 
--- DROP FUNCTION autoaudit.sincronizar_diccionario();
 
-CREATE OR REPLACE FUNCTION autoaudit.sincronizar_diccionario()
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'pg_temp'
+-- Sincroniza las tablas y columnas de usuario con el diccionario de PostgreSQL.
+CREATE OR REPLACE FUNCTION trazabilidad.trz_sincronizar_diccionario()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'pg_temp'
 AS $function$
 BEGIN
-    INSERT INTO autoaudit.tabla_auditada (
+    INSERT INTO trazabilidad.trz_tabla_origen (
         esquema_origen,
         nombre_tabla
     )
@@ -534,10 +548,10 @@ BEGIN
     WHERE t.table_type = 'BASE TABLE'
       AND t.table_schema <> 'information_schema'
       AND left(t.table_schema, 3) <> 'pg_'
-      AND t.table_schema <> 'autoaudit'
+      AND t.table_schema <> 'trazabilidad'
     ON CONFLICT (esquema_origen, nombre_tabla) DO NOTHING;
 
-    INSERT INTO autoaudit.columna_auditada (
+    INSERT INTO trazabilidad.trz_columna_origen (
         tabla_auditada_id,
         nombre_columna,
         tipo_dato,
@@ -549,16 +563,15 @@ BEGIN
         c.data_type,
         c.ordinal_position
     FROM information_schema.columns AS c
-    JOIN autoaudit.tabla_auditada AS ta
+    JOIN trazabilidad.trz_tabla_origen AS ta
       ON ta.esquema_origen = c.table_schema::name
      AND ta.nombre_tabla = c.table_name::name
     WHERE c.table_schema <> 'information_schema'
       AND left(c.table_schema, 3) <> 'pg_'
-      AND c.table_schema <> 'autoaudit'
+      AND c.table_schema <> 'trazabilidad'
     ON CONFLICT (tabla_auditada_id, nombre_columna)
     DO UPDATE SET
         tipo_dato = EXCLUDED.tipo_dato,
         posicion = EXCLUDED.posicion;
 END;
-$function$
-;
+$function$;
