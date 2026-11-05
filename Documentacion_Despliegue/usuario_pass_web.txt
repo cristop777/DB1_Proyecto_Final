@@ -1,0 +1,10 @@
+Usuarios para plataforma WEB
+
+admin
+auditoria2026
+
+auditor
+auditor2026
+
+operador
+operador2026
